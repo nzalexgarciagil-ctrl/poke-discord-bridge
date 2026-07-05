@@ -1,0 +1,35 @@
+{
+  "name": "poke-discord-telegram-bridge",
+  "version": "0.1.0",
+  "description": "Discord bridge to the Poke Telegram bot with Components V2 interactions, native polls, and thread routing.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "node --experimental-sqlite --import tsx src/index.ts start",
+    "login": "node --experimental-sqlite --import tsx src/index.ts login",
+    "convert-telethon-session": "node --experimental-sqlite --import tsx src/index.ts convert-telethon-session",
+    "check": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node --experimental-sqlite dist/index.js start"
+  },
+  "keywords": ["discord", "telegram", "bridge", "poke", "components-v2", "polls", "threads"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "telegram": "^2.26.22",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3"
+  }
+}

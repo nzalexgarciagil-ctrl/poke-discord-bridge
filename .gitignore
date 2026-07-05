@@ -1,0 +1,19 @@
+# Secrets and local config
+.env
+*.session
+*.session-journal
+
+# Runtime state
+/data/
+/dist/
+/node_modules/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build/package
+*.tsbuildinfo
