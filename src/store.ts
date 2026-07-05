@@ -30,6 +30,12 @@ export interface DiscordUserContextRecord {
   lastStatusSignature?: string | null;
 }
 
+export interface DiscordMessageSnapshotRecord {
+  discordMessageId: string;
+  content: string;
+  updatedAt: string;
+}
+
 export interface DiscordUserMetadataRecord {
   userId: string;
   guildId: string;
@@ -122,6 +128,24 @@ export class BridgeStore {
 
   consumeRichInteraction(id: string): void {
     this.db.prepare("UPDATE rich_interaction SET consumed_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+  }
+
+  saveDiscordMessageSnapshot(record: { discordMessageId: string; content: string }): void {
+    this.db.prepare(`
+      INSERT INTO discord_message_snapshot (discord_message_id, content, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(discord_message_id) DO UPDATE SET
+        content = excluded.content,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(record.discordMessageId, record.content);
+  }
+
+  discordMessageSnapshot(discordMessageId: string): DiscordMessageSnapshotRecord | undefined {
+    const row = this.db.prepare(`
+      SELECT discord_message_id, content, updated_at
+      FROM discord_message_snapshot WHERE discord_message_id = ?
+    `).get(discordMessageId) as DiscordMessageSnapshotRow | undefined;
+    return row ? mapDiscordMessageSnapshotRow(row) : undefined;
   }
 
   discordUserContext(userId: string, guildId: string): DiscordUserContextRecord | undefined {
@@ -287,6 +311,18 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS discord_message_snapshot (
+          discord_message_id TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    },
+  },
 ];
 
 function messageMapHasDiscordChannelId(db: DatabaseSync): boolean {
@@ -318,6 +354,12 @@ interface DiscordUserContextRow {
   first_seen_at: string;
   last_seen_at: string;
   last_status_signature?: string | null;
+}
+
+interface DiscordMessageSnapshotRow {
+  discord_message_id: string;
+  content: string;
+  updated_at: string;
 }
 
 interface DiscordUserMetadataRow {
@@ -369,6 +411,14 @@ function mapDiscordUserContextRow(row: DiscordUserContextRow): DiscordUserContex
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     lastStatusSignature: row.last_status_signature,
+  };
+}
+
+function mapDiscordMessageSnapshotRow(row: DiscordMessageSnapshotRow): DiscordMessageSnapshotRecord {
+  return {
+    discordMessageId: row.discord_message_id,
+    content: row.content,
+    updatedAt: row.updated_at,
   };
 }
 

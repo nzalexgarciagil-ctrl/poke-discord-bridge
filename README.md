@@ -10,6 +10,7 @@ A TypeScript Discord bot that lets a Discord channel or DM talk to the Poke Tele
 - Poke Telegram replies -> Discord.
 - One Telegram message maps to one Discord message. The bridge does not batch Poke responses.
 - Reply preservation for previously bridged messages.
+- Discord message edit notifications to Poke with before/after text.
 - Discord attachments -> Telegram files via attachment URL.
 - Telegram media -> Discord attachments.
 - Unicode reaction forwarding in both directions where possible.
@@ -112,6 +113,21 @@ The bot needs channel permissions to:
 - Create public threads and send messages in threads, if using thread features.
 
 Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channel for thread creation.
+
+## Discord user context
+
+## Discord message edits
+
+When a bridged Discord message is edited, the bridge sends Poke a Telegram reply to the original bridged message:
+
+```text
+[Discord message edited]
+[Discord: guild="..." channel="..." channelId=... | author="..." username=... userId=... | messageId=...]
+from: old text
+to: new text
+```
+
+The bridge stores a small `discord_message_snapshot` row for each forwarded Discord message so edits still have reliable before/after text after restarts.
 
 ## Discord user context
 

@@ -1,8 +1,8 @@
-import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type Presence, type SendableChannels } from "discord.js";
+import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type PartialMessage, type Presence, type SendableChannels } from "discord.js";
 import { mkdirSync } from "node:fs";
 import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
-import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
+import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatDiscordSource, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
 import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type EndPollUi, type InteractiveUi, type MessageLinkUi, type PollResultsUi, type PollUi, type ReactionUi, type ReplyUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
 import { BridgeStore, type DiscordUserMetadataRecord } from "./store.js";
@@ -82,6 +82,14 @@ export class PokeBridge {
         await this.handleDiscordMessage(message);
       } catch (error) {
         logger.error({ err: error, messageId: message.id }, "failed to bridge discord message");
+      }
+    });
+
+    this.discord.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+      try {
+        await this.handleDiscordMessageUpdate(oldMessage, newMessage);
+      } catch (error) {
+        logger.error({ err: error, messageId: newMessage.id }, "failed to bridge discord message edit");
       }
     });
 
@@ -202,6 +210,7 @@ export class PokeBridge {
     if (message.attachments.size === 0) {
       const sent = await this.telegram.sendText(text, replyTo);
       this.store.save({ discordMessageId: message.id, discordChannelId: message.channelId, telegramMessageId: sent.id, direction: "discord_to_telegram" });
+      this.store.saveDiscordMessageSnapshot({ discordMessageId: message.id, content: discordMessageSnapshotText(message) });
       return;
     }
 
@@ -214,7 +223,27 @@ export class PokeBridge {
 
     if (firstTelegramId) {
       this.store.save({ discordMessageId: message.id, discordChannelId: message.channelId, telegramMessageId: firstTelegramId, direction: "discord_to_telegram" });
+      this.store.saveDiscordMessageSnapshot({ discordMessageId: message.id, content: discordMessageSnapshotText(message) });
     }
+  }
+
+  private async handleDiscordMessageUpdate(oldMessage: Message | PartialMessage, newMessage: Message): Promise<void> {
+    if (newMessage.author?.bot) return;
+    if (!this.isBridgeDiscordMessage(newMessage)) return;
+
+    const mapped = this.store.byDiscordMessageId(newMessage.id);
+    if (!mapped || mapped.direction !== "discord_to_telegram") return;
+
+    const after = discordMessageSnapshotText(newMessage);
+    const before = this.store.discordMessageSnapshot(newMessage.id)?.content
+      ?? ("content" in oldMessage ? oldMessage.content?.trim() : undefined)
+      ?? "[unknown previous content]";
+
+    if (before === after) return;
+
+    const text = truncateTelegram(`${formatDiscordSourceForEdit(newMessage)}\nfrom: ${before}\nto: ${after}`);
+    await this.telegram.sendText(text, mapped.telegramMessageId);
+    this.store.saveDiscordMessageSnapshot({ discordMessageId: newMessage.id, content: after });
   }
 
   private async handleTelegramMessage(message: Api.Message): Promise<void> {
@@ -566,6 +595,16 @@ export class PokeBridge {
     }
     return channel as BridgeDiscordChannel;
   }
+}
+
+function discordMessageSnapshotText(message: Message): string {
+  const content = message.content?.trim();
+  const attachments = [...message.attachments.values()].map((attachment) => `[attachment: ${attachment.name ?? attachment.url}]`);
+  return [content || "[no text]", ...attachments].join("\n");
+}
+
+function formatDiscordSourceForEdit(message: Message): string {
+  return `[Discord message edited]\n${formatDiscordSource(message)}`;
 }
 
 function discordUserMetadataFromMessage(message: Message, member?: GuildMember, statusSignature?: string): DiscordUserMetadataRecord {
