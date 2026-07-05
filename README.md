@@ -100,6 +100,14 @@ Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channe
 
 ## Poke UI Protocol
 
+Use this Poke recipe to give Poke the bridge instructions:
+
+```text
+https://poke.com/r/t7xPSD3-1VA
+```
+
+The bridge no longer appends UI instructions to every Discord message. Poke should learn the protocol from the recipe above.
+
 Poke can append one machine-readable block to a normal Telegram message:
 
 ```text

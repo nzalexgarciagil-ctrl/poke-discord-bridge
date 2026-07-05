@@ -179,7 +179,7 @@ export class PokeBridge {
     if (!this.isBridgeDiscordMessage(message)) return;
 
     const replyTo = await this.telegramReplyTargetForDiscord(message);
-    const text = appendDiscordUiHint(formatDiscordMessageForTelegram(message));
+    const text = formatDiscordMessageForTelegram(message);
 
     if (message.attachments.size === 0) {
       const sent = await this.telegram.sendText(text, replyTo);
@@ -463,10 +463,6 @@ export class PokeBridge {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function appendDiscordUiHint(text: string): string {
-  return `${text}\n\n[tip: When a Discord UI/action would help, include a machine-readable block after your normal message: <<<POKE_DISCORD_UI { ...json... } >>> Supported types: choice, multi_choice, buttons, confirm, poll, thread, thread_message. Poll schema: {"type":"poll","title":"Question?","options":[{"label":"A","value":"a"},{"label":"B","value":"b"}],"durationHours":24,"allowMultiselect":false}. Thread schema: {"type":"thread","title":"Thread name","message":"optional starter"}. Thread message schema: {"type":"thread_message","threadId":"optional Discord thread id","message":"text"}. For quick yes/no or actions, use buttons or confirm. Keep labels short. Include values that should be sent back to you when the user chooses. Do not explain the JSON. The bridge will hide it.]`;
 }
 
 function telegramFilename(message: Api.Message): string {
