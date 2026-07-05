@@ -113,7 +113,7 @@ Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channe
 Use this Poke recipe to give Poke the bridge instructions:
 
 ```text
-https://poke.com/r/xNSP8-Oe1iY
+https://poke.com/r/NrX10fCvNh0
 ```
 
 The bridge no longer appends UI instructions to every Discord message. Poke should learn the protocol from the recipe above.
