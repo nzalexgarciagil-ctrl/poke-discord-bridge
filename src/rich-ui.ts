@@ -12,10 +12,10 @@ import {
 import { randomBytes } from "node:crypto";
 
 const UI_BLOCK_RE = /<<<\s*POKE_DISCORD_UI\s*([\s\S]*?)\s*>>>/i;
-const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "poll_results", "end_poll", "reaction", "thread", "thread_message"]);
-const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, poll_results, end_poll, reaction, thread, or thread_message.";
+const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "poll_results", "end_poll", "reaction", "message_link", "reply", "thread", "thread_message"]);
+const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, poll_results, end_poll, reaction, message_link, reply, thread, or thread_message.";
 
-export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | PollResultsUi | EndPollUi | ReactionUi | ThreadUi | ThreadMessageUi;
+export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | PollResultsUi | EndPollUi | ReactionUi | MessageLinkUi | ReplyUi | ThreadUi | ThreadMessageUi;
 export type InteractiveUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi;
 
 export interface ChoiceUi {
@@ -73,6 +73,19 @@ export interface EndPollUi {
 export interface ReactionUi {
   type: "reaction";
   emoji: string;
+  messageId?: string;
+  channelId?: string;
+}
+
+export interface MessageLinkUi {
+  type: "message_link";
+  messageId?: string;
+  channelId?: string;
+}
+
+export interface ReplyUi {
+  type: "reply";
+  message: string;
   messageId?: string;
   channelId?: string;
 }
@@ -288,6 +301,17 @@ function normalizeRichUi(value: Record<string, unknown>): RichUi {
   if (type === "reaction") return {
     type,
     emoji: stringField(value.emoji, stringField(value.emote, "")),
+    messageId: optionalString(value.messageId),
+    channelId: optionalString(value.channelId),
+  };
+  if (type === "message_link") return {
+    type,
+    messageId: optionalString(value.messageId),
+    channelId: optionalString(value.channelId),
+  };
+  if (type === "reply") return {
+    type,
+    message: stringField(value.message, stringField(value.body, stringField(value.text, ""))),
     messageId: optionalString(value.messageId),
     channelId: optionalString(value.channelId),
   };

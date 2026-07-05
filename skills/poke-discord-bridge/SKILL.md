@@ -1,6 +1,6 @@
 ---
 name: poke-discord-bridge
-description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, poll ending, emoji reactions, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, poll ending, reactions, thread creation, or thread messages.
+description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, poll ending, emoji reactions, Discord message links, explicit Discord replies, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, poll ending, reactions, message links, explicit replies, thread creation, or thread messages.
 ---
 
 # Poke Discord Bridge
@@ -55,6 +55,8 @@ Use only these active types:
 - `poll_results`
 - `end_poll`
 - `reaction`
+- `message_link`
+- `reply`
 - `thread`
 - `thread_message`
 
@@ -472,6 +474,77 @@ Rules:
 - For thread messages, use the thread's `channelId` when explicitly targeting by `messageId`; the parent channel ID is not enough to fetch a message inside a thread.
 - If normal text is included before the block, the bridge will send that text and also add the reaction.
 
+### Use `message_link` to point to a Discord message
+
+Use when Poke needs to reference a specific Discord message without copying or restating it.
+
+Best for:
+
+- Pointing to a prior decision.
+- Linking to a poll, thread starter, or important answer.
+- Giving the user a jump link to the exact message being discussed.
+
+Preferred schema when replying to the bridged Telegram message:
+
+```json
+{
+  "type": "message_link"
+}
+```
+
+Schema with explicit Discord message ID:
+
+```json
+{
+  "type": "message_link",
+  "messageId": "123456789012345678",
+  "channelId": "123456789012345678"
+}
+```
+
+Rules:
+
+- Prefer replying to the Telegram message that corresponds to the Discord message.
+- Use the thread ID as `channelId` when linking to a message inside a thread.
+- If normal text is included before the block, the bridge sends that text followed by the link.
+
+### Use `reply` to reply to a specific Discord message
+
+Use when Poke needs to answer a particular Discord message, not just post in the current channel/thread.
+
+Best for:
+
+- Responding to a specific earlier message after other messages happened.
+- Replying inside a thread by explicit target.
+- Keeping Discord conversation threading clear.
+
+Preferred schema when replying to the bridged Telegram message:
+
+```json
+{
+  "type": "reply",
+  "message": "Replying to that specific message."
+}
+```
+
+Schema with explicit Discord message ID:
+
+```json
+{
+  "type": "reply",
+  "message": "Replying to that specific message.",
+  "messageId": "123456789012345678",
+  "channelId": "123456789012345678"
+}
+```
+
+Rules:
+
+- Prefer replying to the Telegram message that corresponds to the Discord message.
+- Use `messageId` and `channelId` when replying from outside the current inferred context.
+- Use the thread ID as `channelId` when replying to a message inside a thread.
+- Include `message`; if omitted, the normal text before the block is used.
+
 ### Use `thread` to create a Discord thread
 
 Use when a topic deserves its own focused conversation inside the configured Discord channel.
@@ -602,6 +675,8 @@ Use this decision table:
 | Poke needs current Discord poll results | `poll_results` |
 | Poke should close a Discord poll | `end_poll` |
 | Poke should react to a Discord message | `reaction` |
+| Poke needs a jump link to a Discord message | `message_link` |
+| Poke should reply to a specific Discord message | `reply` |
 | Topic needs a focused Discord sub-conversation | `thread` |
 | Poke should send a message into an existing thread | `thread_message` |
 | User just needs an answer | Plain text, no block |
@@ -676,6 +751,24 @@ I’ll close the poll and summarize the result.
 >>>
 ```
 
+### Link to a message
+
+```text
+Here’s the exact message.
+
+<<<POKE_DISCORD_UI
+{"type":"message_link"}
+>>>
+```
+
+### Reply to a specific message
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"reply","message":"Yep, this is the one I mean."}
+>>>
+```
+
 ### Start focused discussion
 
 ```text
@@ -733,6 +826,8 @@ The bridge currently treats these as stable:
 - `poll_results`
 - `end_poll`
 - `reaction`
+- `message_link`
+- `reply`
 - `thread` in guild text/news channels
 - `thread_message` to fetchable Discord threads/channels
 
@@ -750,4 +845,6 @@ Before sending a rich/action response, verify:
 - For poll results, reply to the poll’s bridged Telegram message or include `messageId`.
 - For ending polls, reply to the poll’s bridged Telegram message or include `messageId`.
 - For reactions, reply to the bridged Telegram message or include `messageId` and a valid `emoji`.
+- For message links, reply to the bridged Telegram message or include `messageId`.
+- For explicit replies, include message text and reply to the bridged Telegram message or include `messageId`.
 - For threads, the target is likely a guild channel or the response has a graceful fallback.

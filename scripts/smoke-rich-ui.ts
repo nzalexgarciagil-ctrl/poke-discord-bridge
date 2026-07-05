@@ -9,6 +9,8 @@ const samples: RichUi[] = [
   { type: "poll_results", messageId: "123" },
   { type: "end_poll", messageId: "123", summarize: true },
   { type: "reaction", emoji: "👍", messageId: "123" },
+  { type: "message_link", messageId: "123" },
+  { type: "reply", message: "Reply text", messageId: "123" },
   { type: "thread", title: "Thread", message: "Starter", createFromReply: false, sendAck: true },
   { type: "thread_message", threadId: "123", message: "Hello" },
 ];

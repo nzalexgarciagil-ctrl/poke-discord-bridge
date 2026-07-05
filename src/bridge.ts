@@ -4,7 +4,7 @@ import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
 import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
-import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type EndPollUi, type InteractiveUi, type PollResultsUi, type PollUi, type ReactionUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
+import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type EndPollUi, type InteractiveUi, type MessageLinkUi, type PollResultsUi, type PollUi, type ReactionUi, type ReplyUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
 import { BridgeStore } from "./store.js";
 import { TelegramBridgeClient } from "./telegram-client.js";
 
@@ -224,6 +224,10 @@ export class PokeBridge {
         sent = await this.endPoll(channel, parsed.ui, message, parsed.displayText);
       } else if (parsed.ui.type === "reaction") {
         sent = await this.sendDiscordReaction(channel, parsed.ui, message, parsed.displayText, replyMessage);
+      } else if (parsed.ui.type === "message_link") {
+        sent = await this.sendMessageLink(channel, parsed.ui, message, parsed.displayText);
+      } else if (parsed.ui.type === "reply") {
+        sent = await this.sendExplicitReply(channel, parsed.ui, message, parsed.displayText);
       } else if (parsed.ui.type === "thread") {
         sent = await this.createDiscordThread(channel, parsed.ui, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "thread_message") {
@@ -365,6 +369,20 @@ export class PokeBridge {
     await target.react(ui.emoji);
     if (displayText) return replyMessage ? await replyMessage.reply(displayText) : await channel.send(displayText);
     return target;
+  }
+
+  private async sendMessageLink(channel: BridgeDiscordChannel, ui: MessageLinkUi, telegramMessage: Api.Message, displayText: string): Promise<Message> {
+    const target = await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+    if (!target) return await channel.send(displayText || "Could not find a Discord message to link.");
+    return await channel.send(displayText ? `${displayText}\n${target.url}` : target.url);
+  }
+
+  private async sendExplicitReply(channel: BridgeDiscordChannel, ui: ReplyUi, telegramMessage: Api.Message, displayText: string): Promise<Message> {
+    const target = await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+    const content = ui.message || displayText;
+    if (!target) return await channel.send(content || "Could not find a Discord message to reply to.");
+    if (!content) return await channel.send("Reply action needs message text.");
+    return await target.reply(content);
   }
 
   private async resolveDiscordMessage(channel: BridgeDiscordChannel, telegramMessage: Api.Message, messageId?: string, channelId?: string): Promise<Message | undefined> {
