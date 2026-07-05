@@ -12,10 +12,10 @@ import {
 import { randomBytes } from "node:crypto";
 
 const UI_BLOCK_RE = /<<<\s*POKE_DISCORD_UI\s*([\s\S]*?)\s*>>>/i;
-const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "poll_results", "thread", "thread_message"]);
-const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, poll_results, thread, or thread_message.";
+const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "poll_results", "reaction", "thread", "thread_message"]);
+const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, poll_results, reaction, thread, or thread_message.";
 
-export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | PollResultsUi | ThreadUi | ThreadMessageUi;
+export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | PollResultsUi | ReactionUi | ThreadUi | ThreadMessageUi;
 export type InteractiveUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi;
 
 export interface ChoiceUi {
@@ -59,6 +59,13 @@ export interface PollUi {
 
 export interface PollResultsUi {
   type: "poll_results";
+  messageId?: string;
+  channelId?: string;
+}
+
+export interface ReactionUi {
+  type: "reaction";
+  emoji: string;
   messageId?: string;
   channelId?: string;
 }
@@ -159,6 +166,7 @@ export function getButtonValueByIndex(ui: InteractiveUi, index: number): string 
 function isRenderable(ui: RichUi): boolean {
   if ((ui.type === "choice" || ui.type === "multi_choice") && ui.options.length === 0) return false;
   if (ui.type === "buttons" && ui.buttons.length === 0) return false;
+  if (ui.type === "reaction" && !ui.emoji) return false;
   return true;
 }
 
@@ -262,6 +270,12 @@ function normalizeRichUi(value: Record<string, unknown>): RichUi {
   if (type === "poll_results") return {
     type,
     messageId: optionalString(value.messageId) ?? optionalString(value.pollMessageId),
+    channelId: optionalString(value.channelId),
+  };
+  if (type === "reaction") return {
+    type,
+    emoji: stringField(value.emoji, stringField(value.emote, "")),
+    messageId: optionalString(value.messageId),
     channelId: optionalString(value.channelId),
   };
   if (type === "thread") return {

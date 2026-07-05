@@ -4,7 +4,7 @@ import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
 import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
-import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type InteractiveUi, type PollResultsUi, type PollUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
+import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type InteractiveUi, type PollResultsUi, type PollUi, type ReactionUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
 import { BridgeStore } from "./store.js";
 import { TelegramBridgeClient } from "./telegram-client.js";
 
@@ -220,6 +220,8 @@ export class PokeBridge {
         sent = await this.sendPoll(channel, parsed.ui, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "poll_results") {
         sent = await this.sendPollResults(channel, parsed.ui, message, parsed.displayText);
+      } else if (parsed.ui.type === "reaction") {
+        sent = await this.sendDiscordReaction(channel, parsed.ui, message, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "thread") {
         sent = await this.createDiscordThread(channel, parsed.ui, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "thread_message") {
@@ -353,9 +355,22 @@ export class PokeBridge {
   }
 
   private async resolvePollMessage(channel: BridgeDiscordChannel, ui: PollResultsUi, telegramMessage: Api.Message): Promise<Message | undefined> {
-    if (ui.messageId) {
-      const targetChannel = ui.channelId ? await this.fetchDiscordChannelById(ui.channelId).catch(() => undefined) : channel;
-      return await targetChannel?.messages.fetch(ui.messageId).catch(() => undefined);
+    return await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+  }
+
+  private async sendDiscordReaction(channel: BridgeDiscordChannel, ui: ReactionUi, telegramMessage: Api.Message, displayText: string, replyMessage?: Message): Promise<Message> {
+    const target = await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+    if (!target) return await channel.send(displayText || `Could not find a Discord message to react to with ${ui.emoji}.`);
+
+    await target.react(ui.emoji);
+    if (displayText) return replyMessage ? await replyMessage.reply(displayText) : await channel.send(displayText);
+    return target;
+  }
+
+  private async resolveDiscordMessage(channel: BridgeDiscordChannel, telegramMessage: Api.Message, messageId?: string, channelId?: string): Promise<Message | undefined> {
+    if (messageId) {
+      const targetChannel = channelId ? await this.fetchDiscordChannelById(channelId).catch(() => undefined) : channel;
+      return await targetChannel?.messages.fetch(messageId).catch(() => undefined);
     }
 
     const replyTo = telegramMessage.replyTo;

@@ -1,6 +1,6 @@
 ---
 name: poke-discord-bridge
-description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, thread creation, or thread messages.
+description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, emoji reactions, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, reactions, thread creation, or thread messages.
 ---
 
 # Poke Discord Bridge
@@ -53,6 +53,7 @@ Use only these active types:
 - `confirm`
 - `poll`
 - `poll_results`
+- `reaction`
 - `thread`
 - `thread_message`
 
@@ -375,6 +376,52 @@ Limitations:
 - Native poll behavior is controlled by Discord.
 - Poll creation can fail if the Discord client/server context does not support polls or permissions are missing.
 
+### Use `reaction` to add an emoji reaction to a Discord message
+
+Use when Poke wants to acknowledge or react to a specific Discord message without sending a full text response.
+
+Best for:
+
+- Lightweight acknowledgement.
+- Emotional response: 👍, 😂, ❤️, 🔥.
+- Marking a message as seen or approved.
+
+Preferred schema when replying to the bridged Telegram message for the Discord message:
+
+```json
+{
+  "type": "reaction",
+  "emoji": "👍"
+}
+```
+
+Schema with explicit Discord message ID:
+
+```json
+{
+  "type": "reaction",
+  "emoji": "🔥",
+  "messageId": "123456789012345678",
+  "channelId": "123456789012345678"
+}
+```
+
+Example response:
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"reaction","emoji":"👍"}
+>>>
+```
+
+Rules:
+
+- Prefer replying to the Telegram message that corresponds to the Discord message to react to.
+- Use Unicode emoji for best compatibility.
+- Custom Discord emoji may work only if the bot can resolve/use that emoji identifier.
+- If `messageId` is provided and the target is outside the inferred channel, include `channelId`.
+- If normal text is included before the block, the bridge will send that text and also add the reaction.
+
 ### Use `thread` to create a Discord thread
 
 Use when a topic deserves its own focused conversation inside the configured Discord channel.
@@ -503,6 +550,7 @@ Use this decision table:
 | User needs yes/no approval | `confirm` |
 | Multiple Discord users should vote | `poll` |
 | Poke needs current Discord poll results | `poll_results` |
+| Poke should react to a Discord message | `reaction` |
 | Topic needs a focused Discord sub-conversation | `thread` |
 | Poke should send a message into an existing thread | `thread_message` |
 | User just needs an answer | Plain text, no block |
@@ -556,6 +604,14 @@ I can go with that plan. Confirm before I treat it as decided.
 
 <<<POKE_DISCORD_UI
 {"type":"confirm","title":"Confirm plan","body":"Proceed with this option?","confirmLabel":"Confirm","cancelLabel":"Cancel","confirmValue":"confirmed","cancelValue":"cancelled"}
+>>>
+```
+
+### React to a message
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"reaction","emoji":"👍"}
 >>>
 ```
 
@@ -614,6 +670,7 @@ The bridge currently treats these as stable:
 - `confirm`
 - `poll`
 - `poll_results`
+- `reaction`
 - `thread` in guild text/news channels
 - `thread_message` to fetchable Discord threads/channels
 
@@ -629,4 +686,5 @@ Before sending a rich/action response, verify:
 - For choices/buttons, labels are short and values are present.
 - For polls, there are 2-10 options.
 - For poll results, reply to the poll’s bridged Telegram message or include `messageId`.
+- For reactions, reply to the bridged Telegram message or include `messageId` and a valid `emoji`.
 - For threads, the target is likely a guild channel or the response has a graceful fallback.
