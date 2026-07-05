@@ -1,4 +1,4 @@
-import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type PartialMessage, type Presence, type SendableChannels } from "discord.js";
+import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type PartialMessage, type SendableChannels } from "discord.js";
 import { mkdirSync } from "node:fs";
 import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
@@ -37,10 +37,6 @@ export class PokeBridge {
       GatewayIntentBits.GuildMessagePolls,
       GatewayIntentBits.DirectMessagePolls,
     ];
-    if (config.BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE || config.BRIDGE_USER_CONTEXT_STATUS_UPDATES) {
-      intents.push(GatewayIntentBits.GuildPresences);
-    }
-
     this.discord = new Client({
       intents,
       partials: [Partials.Message, Partials.Channel, Partials.Reaction],
@@ -497,40 +493,27 @@ export class PokeBridge {
     return true;
   }
 
-  private async forwardPollVote(pollAnswer: unknown, userId: string, action: "voted" | "removed vote"): Promise<void> {
+  private async forwardPollVote(pollAnswer: unknown, _userId: string, action: "voted" | "removed vote"): Promise<void> {
     const answer = pollAnswer as { id?: number; text?: string | null; poll?: { messageId?: string; message?: Message; question?: { text?: string | null } } };
     const messageId = answer.poll?.messageId ?? answer.poll?.message?.id;
     if (!messageId) return;
     const mapped = this.store.byDiscordMessageId(messageId);
     if (!mapped) return;
 
-    const user = await this.discord.users.fetch(userId).catch(() => undefined);
-    const who = user ? `${user.displayName} @ ${user.username}` : userId;
     const option = answer.text || `answer ${answer.id ?? "unknown"}`;
-    await this.telegram.sendText(`[Discord poll] ${who} ${action}: ${option}`, mapped.telegramMessageId);
+    await this.telegram.sendText(`[Discord poll] ${action}: ${option}`, mapped.telegramMessageId);
   }
 
   private discordContextPrefixForMessage(message: Message): string {
     if (!message.guildId) return "";
 
     const member = message.member ?? undefined;
-    const presence = this.config.BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE || this.config.BRIDGE_USER_CONTEXT_STATUS_UPDATES
-      ? member?.presence ?? undefined
-      : undefined;
-    const statusSignature = presence ? discordPresenceSignature(presence) : undefined;
     const previous = this.store.discordUserContext(message.author.id, message.guildId);
-    this.store.saveDiscordUserMetadata(discordUserMetadataFromMessage(message, member, statusSignature));
-    this.store.saveDiscordUserContext({ userId: message.author.id, guildId: message.guildId, statusSignature });
+    this.store.saveDiscordUserMetadata(discordUserMetadataFromMessage(message, member));
+    this.store.saveDiscordUserContext({ userId: message.author.id, guildId: message.guildId });
 
-    if (!previous) return `${formatNewDiscordUserContext(message, member, presence)}\n\n`;
-
-    const previousStatus = previous.lastStatusSignature;
-    const statusChanged = this.config.BRIDGE_USER_CONTEXT_STATUS_UPDATES
-      && statusSignature
-      && previousStatus
-      && statusSignature !== previousStatus;
-    if (!statusChanged || !previousStatus || !statusSignature) return "";
-    return `${formatDiscordStatusUpdate(message, previousStatus, statusSignature)}\n\n`;
+    if (!previous) return `${formatNewDiscordUserContext(message, member)}\n\n`;
+    return "";
   }
 
   private async telegramReplyTargetForDiscord(message: Message): Promise<number | undefined> {
@@ -595,16 +578,15 @@ function formatDiscordSourceForEdit(message: Message): string {
   return `[Discord message edited]\n${formatDiscordSource(message)}`;
 }
 
-function discordUserMetadataFromMessage(message: Message, member?: GuildMember, statusSignature?: string): DiscordUserMetadataRecord {
+function discordUserMetadataFromMessage(message: Message, member?: GuildMember): DiscordUserMetadataRecord {
   return discordUserMetadataFromUserLike({
     user: message.author,
     guildId: message.guildId ?? "dm",
     member,
-    statusSignature,
   });
 }
 
-function discordUserMetadataFromUserLike(input: { user: Message["author"]; guildId: string; member?: GuildMember; statusSignature?: string }): DiscordUserMetadataRecord {
+function discordUserMetadataFromUserLike(input: { user: Message["author"]; guildId: string; member?: GuildMember }): DiscordUserMetadataRecord {
   return {
     userId: input.user.id,
     guildId: input.guildId,
@@ -621,11 +603,10 @@ function discordUserMetadataFromUserLike(input: { user: Message["author"]; guild
     roles: discordMemberRoleNames(input.member),
     bot: input.user.bot,
     system: input.user.system,
-    statusSignature: input.statusSignature,
   };
 }
 
-function formatNewDiscordUserContext(message: Message, member?: GuildMember, presence?: Presence): string {
+function formatNewDiscordUserContext(message: Message, member?: GuildMember): string {
   const lines = [
     "[New Discord user context]",
     `userId=${message.author.id}`,
@@ -645,17 +626,7 @@ function formatNewDiscordUserContext(message: Message, member?: GuildMember, pre
   if (member?.joinedAt) lines.push(`joinedServerAt=${member.joinedAt.toISOString()}`);
   const roles = discordMemberRoleNames(member);
   if (roles.length) lines.push(`roles=${roles.join(", ")}`);
-  if (presence) lines.push(...formatDiscordPresenceLines(presence));
   return lines.join("\n");
-}
-
-function formatDiscordStatusUpdate(message: Message, previous: string, current: string): string {
-  return [
-    "[Discord user status update]",
-    `userId=${message.author.id}`,
-    `username=${message.author.username}`,
-    `status=${previous} -> ${current}`,
-  ].join("\n");
 }
 
 function discordMemberRoleNames(member?: GuildMember): string[] {
@@ -665,23 +636,6 @@ function discordMemberRoleNames(member?: GuildMember): string[] {
     .sort((a, b) => b.position - a.position)
     .slice(0, 15)
     .map((role) => role.name);
-}
-
-function formatDiscordPresenceLines(presence: Presence): string[] {
-  const lines = [`status=${presence.status}`];
-  const activities = presence.activities.map((activity) => discordActivityLabel(activity)).filter(Boolean).slice(0, 5);
-  if (activities.length) lines.push(`activities=${activities.join("; ")}`);
-  return lines;
-}
-
-function discordPresenceSignature(presence: Presence): string {
-  const activities = presence.activities.map((activity) => discordActivityLabel(activity)).filter(Boolean).sort().join(";");
-  return activities ? `${presence.status} | ${activities}` : presence.status;
-}
-
-function discordActivityLabel(activity: Presence["activities"][number]): string {
-  const details = [activity.details, activity.state].filter(Boolean).join(" / ");
-  return details ? `${activity.name} (${details})` : activity.name;
 }
 
 function formatPollResults(message: Message, prefix?: string): string {

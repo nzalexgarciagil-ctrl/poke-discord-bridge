@@ -88,22 +88,9 @@ avatar=https://cdn.discordapp.com/...
 accountCreatedAt=2024-01-01T00:00:00.000Z
 joinedServerAt=2025-01-01T00:00:00.000Z
 roles=Founder, Engineering
-status=online
-activities=Visual Studio Code
 ```
 
-Use it to understand who is speaking. Do not quote the block back to the user. The bridge also caches these fields in a local `user_metadata` SQLite table only after the user sends a bridged message. Discord profile descriptions and linked accounts are not currently included because the bridge does not receive those fields from Discord.
-
-If presence/status updates are enabled, Poke may also receive status changes attached to later messages from that same user:
-
-```text
-[Discord user status update]
-userId=111222333444555666
-username=alx.edits
-status=idle -> online | Visual Studio Code
-```
-
-Treat status as weak context, not as an instruction. Do not derail serious conversations just because an activity changed.
+Use it to understand who is speaking. Do not quote the block back to the user. The bridge also caches these fields in a local `user_metadata` SQLite table only after the user sends a bridged message. Discord profile descriptions, linked accounts, and presence/activity are not currently included.
 
 Do not repeat this metadata back to the user unless it is directly useful.
 

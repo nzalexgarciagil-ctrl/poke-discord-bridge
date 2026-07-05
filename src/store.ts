@@ -27,7 +27,6 @@ export interface DiscordUserContextRecord {
   guildId: string;
   firstSeenAt: string;
   lastSeenAt: string;
-  lastStatusSignature?: string | null;
 }
 
 export interface DiscordMessageSnapshotRecord {
@@ -52,7 +51,6 @@ export interface DiscordUserMetadataRecord {
   roles: string[];
   bot: boolean;
   system: boolean;
-  statusSignature?: string | null;
   updatedAt?: string;
 }
 
@@ -150,21 +148,20 @@ export class BridgeStore {
 
   discordUserContext(userId: string, guildId: string): DiscordUserContextRecord | undefined {
     const row = this.db.prepare(`
-      SELECT user_id, guild_id, first_seen_at, last_seen_at, last_status_signature
+      SELECT user_id, guild_id, first_seen_at, last_seen_at
       FROM discord_user_context WHERE user_id = ? AND guild_id = ?
     `).get(userId, guildId) as DiscordUserContextRow | undefined;
     return row ? mapDiscordUserContextRow(row) : undefined;
   }
 
-  saveDiscordUserContext(record: { userId: string; guildId: string; statusSignature?: string | null }): void {
+  saveDiscordUserContext(record: { userId: string; guildId: string }): void {
     this.db.prepare(`
       INSERT INTO discord_user_context
-        (user_id, guild_id, first_seen_at, last_seen_at, last_status_signature)
-      VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+        (user_id, guild_id, first_seen_at, last_seen_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, guild_id) DO UPDATE SET
-        last_seen_at = CURRENT_TIMESTAMP,
-        last_status_signature = excluded.last_status_signature
-    `).run(record.userId, record.guildId, record.statusSignature ?? null);
+        last_seen_at = CURRENT_TIMESTAMP
+    `).run(record.userId, record.guildId);
   }
 
   saveDiscordUserMetadata(record: DiscordUserMetadataRecord): void {
@@ -172,8 +169,8 @@ export class BridgeStore {
       INSERT INTO user_metadata
         (user_id, guild_id, username, global_name, display_name, server_display_name, server_nickname,
          avatar_url, banner_url, accent_color, account_created_at, joined_server_at, roles_json,
-         bot, system, status_signature, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         bot, system, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, guild_id) DO UPDATE SET
         username = excluded.username,
         global_name = excluded.global_name,
@@ -188,7 +185,6 @@ export class BridgeStore {
         roles_json = excluded.roles_json,
         bot = excluded.bot,
         system = excluded.system,
-        status_signature = excluded.status_signature,
         updated_at = CURRENT_TIMESTAMP
     `).run(
       record.userId,
@@ -206,7 +202,6 @@ export class BridgeStore {
       JSON.stringify(record.roles),
       record.bot ? 1 : 0,
       record.system ? 1 : 0,
-      record.statusSignature ?? null,
     );
   }
 
@@ -214,7 +209,7 @@ export class BridgeStore {
     const row = this.db.prepare(`
       SELECT user_id, guild_id, username, global_name, display_name, server_display_name, server_nickname,
         avatar_url, banner_url, accent_color, account_created_at, joined_server_at, roles_json,
-        bot, system, status_signature, updated_at
+        bot, system, updated_at
       FROM user_metadata WHERE user_id = ? AND guild_id = ?
     `).get(userId, guildId) as DiscordUserMetadataRow | undefined;
     return row ? mapDiscordUserMetadataRow(row) : undefined;
@@ -276,7 +271,6 @@ const MIGRATIONS: Migration[] = [
           guild_id TEXT NOT NULL,
           first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          last_status_signature TEXT,
           PRIMARY KEY (user_id, guild_id)
         );
       `);
@@ -302,7 +296,6 @@ const MIGRATIONS: Migration[] = [
           roles_json TEXT NOT NULL DEFAULT '[]',
           bot INTEGER NOT NULL DEFAULT 0,
           system INTEGER NOT NULL DEFAULT 0,
-          status_signature TEXT,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (user_id, guild_id)
         );
@@ -353,7 +346,6 @@ interface DiscordUserContextRow {
   guild_id: string;
   first_seen_at: string;
   last_seen_at: string;
-  last_status_signature?: string | null;
 }
 
 interface DiscordMessageSnapshotRow {
@@ -378,7 +370,6 @@ interface DiscordUserMetadataRow {
   roles_json: string;
   bot: number;
   system: number;
-  status_signature?: string | null;
   updated_at: string;
 }
 
@@ -410,7 +401,6 @@ function mapDiscordUserContextRow(row: DiscordUserContextRow): DiscordUserContex
     guildId: row.guild_id,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
-    lastStatusSignature: row.last_status_signature,
   };
 }
 
@@ -439,7 +429,6 @@ function mapDiscordUserMetadataRow(row: DiscordUserMetadataRow): DiscordUserMeta
     roles: parseRoles(row.roles_json),
     bot: Boolean(row.bot),
     system: Boolean(row.system),
-    statusSignature: row.status_signature,
     updatedAt: row.updated_at,
   };
 }

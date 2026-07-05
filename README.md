@@ -100,7 +100,6 @@ Enable these privileged/intents in the Discord developer portal as needed:
 
 - Message Content intent: required to read Discord message content.
 - Poll intents are requested by the bot for poll vote events.
-- Guild Presences intent is optional. Enable it only if using presence/status in user context blocks.
 
 The bot needs channel permissions to:
 
@@ -146,16 +145,9 @@ roles=Founder, Engineering
 [Discord: guild="..." channel="..." channelId=... | author="..." username=... userId=... | messageId=...] ...
 ```
 
-The bridge caches profile fields in `user_metadata` only when the user actually sends a bridged message. It does not scan guild members or cache users just because they exist in a server.
+The bridge caches profile fields in `user_metadata` only when the user actually sends a bridged message. It does not scan guild members, subscribe to presence updates, or cache users just because they exist in a server.
 
-Presence/status is optional and only attached to message-triggered user context/status blocks. It requires the `GuildPresences` gateway intent and corresponding developer-portal setting:
-
-```env
-BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE=true
-BRIDGE_USER_CONTEXT_STATUS_UPDATES=true
-```
-
-The bridge does not currently expose Discord profile descriptions or linked accounts because those fields are not available on the `discord.js` `User` object used here.
+The bridge does not currently expose Discord profile descriptions, linked accounts, or presence/activity because those fields either are not available on the `discord.js` `User` object used here or require broader gateway subscriptions than this bridge should request.
 
 ## Poke UI Protocol
 
