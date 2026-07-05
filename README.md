@@ -114,8 +114,6 @@ The bot needs channel permissions to:
 
 Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channel for thread creation.
 
-## Discord user context
-
 ## Discord message edits
 
 When a bridged Discord message is edited, the bridge sends Poke a Telegram reply to the original bridged message:
@@ -148,31 +146,13 @@ roles=Founder, Engineering
 [Discord: guild="..." channel="..." channelId=... | author="..." username=... userId=... | messageId=...] ...
 ```
 
-The bridge also caches the same profile fields in `user_metadata` so repeated messages do not need profile fetches.
+The bridge caches profile fields in `user_metadata` only when the user actually sends a bridged message. It does not scan guild members or cache users just because they exist in a server.
 
-Presence/status is optional because Discord may require the `GuildPresences` gateway intent and corresponding developer-portal setting. When status updates are enabled, the bridge sends Poke activity changes only for users already seen through the bridge, with a cooldown to avoid presence spam:
+Presence/status is optional and only attached to message-triggered user context/status blocks. It requires the `GuildPresences` gateway intent and corresponding developer-portal setting:
 
 ```env
 BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE=true
 BRIDGE_USER_CONTEXT_STATUS_UPDATES=true
-BRIDGE_USER_CONTEXT_STATUS_UPDATE_MIN_SECONDS=300
-```
-
-Example status update:
-
-```text
-[Discord presence update]
-userId=123456789012345678
-username=alex
-displayName=Alex
-status=online | Cursor -> idle | League of Legends
-activities=League of Legends
-```
-
-Member-join metadata caching is also optional because it requires the `GuildMembers` gateway intent:
-
-```env
-BRIDGE_USER_CONTEXT_CACHE_MEMBER_JOINS=true
 ```
 
 The bridge does not currently expose Discord profile descriptions or linked accounts because those fields are not available on the `discord.js` `User` object used here.
