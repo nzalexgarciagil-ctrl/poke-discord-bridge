@@ -22,6 +22,14 @@ export interface RichInteractionRecord {
   consumedAt?: string | null;
 }
 
+export interface DiscordUserContextRecord {
+  userId: string;
+  guildId: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastStatusSignature?: string | null;
+}
+
 export class BridgeStore {
   private db: DatabaseSync;
 
@@ -50,6 +58,15 @@ export class BridgeStore {
       );
       CREATE INDEX IF NOT EXISTS idx_rich_interaction_discord_message_id
         ON rich_interaction(discord_message_id);
+
+      CREATE TABLE IF NOT EXISTS discord_user_context (
+        user_id TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_status_signature TEXT,
+        PRIMARY KEY (user_id, guild_id)
+      );
     `);
     if (!this.hasColumn("message_map", "discord_channel_id")) {
       this.db.exec("ALTER TABLE message_map ADD COLUMN discord_channel_id TEXT");
@@ -107,6 +124,25 @@ export class BridgeStore {
     `).run(id);
   }
 
+  discordUserContext(userId: string, guildId: string): DiscordUserContextRecord | undefined {
+    const row = this.db.prepare(`
+      SELECT user_id, guild_id, first_seen_at, last_seen_at, last_status_signature
+      FROM discord_user_context WHERE user_id = ? AND guild_id = ?
+    `).get(userId, guildId) as DiscordUserContextRow | undefined;
+    return row ? mapDiscordUserContextRow(row) : undefined;
+  }
+
+  saveDiscordUserContext(record: { userId: string; guildId: string; statusSignature?: string | null }): void {
+    this.db.prepare(`
+      INSERT INTO discord_user_context
+        (user_id, guild_id, first_seen_at, last_seen_at, last_status_signature)
+      VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+      ON CONFLICT(user_id, guild_id) DO UPDATE SET
+        last_seen_at = CURRENT_TIMESTAMP,
+        last_status_signature = excluded.last_status_signature
+    `).run(record.userId, record.guildId, record.statusSignature ?? null);
+  }
+
   close(): void {
     this.db.close();
   }
@@ -130,6 +166,14 @@ interface RichRow {
   consumed_at?: string | null;
 }
 
+interface DiscordUserContextRow {
+  user_id: string;
+  guild_id: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_status_signature?: string | null;
+}
+
 function mapRow(row: Row): MessageMapRecord {
   return {
     discordMessageId: row.discord_message_id,
@@ -149,5 +193,15 @@ function mapRichRow(row: RichRow): RichInteractionRecord {
     payloadJson: row.payload_json,
     createdAt: row.created_at,
     consumedAt: row.consumed_at,
+  };
+}
+
+function mapDiscordUserContextRow(row: DiscordUserContextRow): DiscordUserContextRecord {
+  return {
+    userId: row.user_id,
+    guildId: row.guild_id,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    lastStatusSignature: row.last_status_signature,
   };
 }

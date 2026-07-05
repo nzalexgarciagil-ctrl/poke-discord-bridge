@@ -24,6 +24,7 @@ A TypeScript Discord bot that lets a Discord channel or DM talk to the Poke Tele
 - Poke-triggered Discord emoji reactions.
 - Discord message link generation.
 - Explicit Discord reply targeting.
+- One-time Discord user context blocks so Poke learns new server participants.
 - Discord thread creation and thread message routing for guild text/news channels.
 - Discord messages inside threads under the configured parent channel forward back to Telegram.
 
@@ -98,6 +99,7 @@ Enable these privileged/intents in the Discord developer portal as needed:
 
 - Message Content intent: required to read Discord message content.
 - Poll intents are requested by the bot for poll vote events.
+- Guild Presences intent is optional. Enable it only if using presence/status in user context blocks.
 
 The bot needs channel permissions to:
 
@@ -110,6 +112,34 @@ The bot needs channel permissions to:
 - Create public threads and send messages in threads, if using thread features.
 
 Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channel for thread creation.
+
+## Discord user context
+
+For guild messages, the bridge stores `(userId, guildId)` in SQLite. The first time a Discord user speaks to Poke in that guild, the Telegram message gets a compact context block before the normal Discord message:
+
+```text
+[New Discord user context]
+userId=123456789012345678
+username=alex
+displayName=Alex
+globalName=Alex Garcia
+serverNickname=alx
+avatar=https://cdn.discordapp.com/...
+accountCreatedAt=2024-01-01T00:00:00.000Z
+joinedServerAt=2025-01-01T00:00:00.000Z
+roles=Founder, Engineering
+
+[Discord: guild="..." channel="..." channelId=... | author="..." username=... userId=... | messageId=...] ...
+```
+
+Presence/status is optional because Discord may require the `GuildPresences` gateway intent and corresponding developer-portal setting:
+
+```env
+BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE=true
+BRIDGE_USER_CONTEXT_STATUS_UPDATES=true
+```
+
+The bridge does not currently expose Discord profile descriptions or linked accounts because those fields are not available on the `discord.js` `User` object used here.
 
 ## Poke UI Protocol
 

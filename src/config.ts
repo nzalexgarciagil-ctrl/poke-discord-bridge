@@ -8,6 +8,8 @@ for (const path of envFiles) {
   if (existsSync(path)) dotenv.config({ path, override: false, quiet: true });
 }
 
+const booleanFromEnv = z.preprocess((value) => value === "true" || value === true, z.boolean());
+
 const schema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_GUILD_ID: z.string().min(1).optional(),
@@ -20,6 +22,8 @@ const schema = z.object({
   TELEGRAM_TARGET_BOT_USERNAME: z.string().min(1).default("interaction_poke_bot"),
   BRIDGE_DB_PATH: z.string().default("./data/bridge.sqlite"),
   BRIDGE_TMP_DIR: z.string().default("./data/tmp"),
+  BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE: booleanFromEnv.default(false),
+  BRIDGE_USER_CONTEXT_STATUS_UPDATES: booleanFromEnv.default(false),
   LOG_LEVEL: z.string().default("info"),
 });
 
