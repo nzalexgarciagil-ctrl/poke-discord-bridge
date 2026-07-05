@@ -6,11 +6,14 @@ const DISCORD_LIMIT = 1900;
 
 export function formatDiscordSource(message: Message): string {
   const guild = message.guild?.name ?? "DM/unknown guild";
-  const channel = "name" in message.channel && typeof message.channel.name === "string"
-    ? `#${message.channel.name}`
+  const channelName = "name" in message.channel && typeof message.channel.name === "string"
+    ? message.channel.name
     : message.channel.id;
+  const channelKind = message.channel.isThread() ? "thread" : message.guild ? "channel" : "dm";
+  const parentChannelId = message.channel.isThread() ? message.channel.parentId : undefined;
   const memberName = message.member?.displayName ?? message.author.displayName ?? message.author.username;
-  return `[Discord: ${guild} / ${channel} | ${memberName} @ ${message.author.username} | ${message.id}]`;
+  const parent = parentChannelId ? ` parentChannelId=${parentChannelId}` : "";
+  return `[Discord: guild="${guild}" ${channelKind}="${channelName}" channelId=${message.channelId}${parent} | author="${memberName}" username=${message.author.username} userId=${message.author.id} | messageId=${message.id}]`;
 }
 
 export function formatDiscordMessageForTelegram(message: Message): string {

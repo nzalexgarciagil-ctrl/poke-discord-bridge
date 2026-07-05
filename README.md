@@ -24,7 +24,7 @@ A TypeScript Discord bot that lets a Discord channel or DM talk to the Poke Tele
 - Discord thread creation and thread message routing for guild text/news channels.
 - Discord messages inside threads under the configured parent channel forward back to Telegram.
 
-All Discord users appear to Poke as one Telegram user account. Discord-originated messages include source metadata so Poke can tell who spoke and where.
+All Discord users appear to Poke as one Telegram user account. Discord-originated messages include explicit source metadata, including `channelId`, optional `parentChannelId`, `userId`, and `messageId`, so Poke can tell who spoke and target follow-up actions.
 
 ## Runtime Requirements
 

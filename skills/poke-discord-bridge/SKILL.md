@@ -62,14 +62,15 @@ Use only these active types:
 Discord-originated user messages arrive with metadata like:
 
 ```text
-[Discord: DM/unknown guild / 1234567890123456789 | Alex @ alx.edits | 987654321098765432] yo im lowk hungry what should i get
+[Discord: guild="DM/unknown guild" dm="1234567890123456789" channelId=1234567890123456789 | author="Alex" username=alx.edits userId=111222333444555666 | messageId=987654321098765432] yo im lowk hungry what should i get
 ```
 
 Use this metadata only for context:
 
-- The first segment identifies Discord guild/channel/thread context.
-- The second segment identifies the human speaker.
-- The last number is the Discord message ID.
+- `channelId` identifies the Discord channel or thread that contained the message.
+- `parentChannelId` appears for thread messages and identifies the parent channel.
+- `messageId` is the Discord message ID. Use it when a block needs to target a specific Discord message.
+- `author`, `username`, and `userId` identify the human speaker.
 
 Do not repeat this metadata back to the user unless it is directly useful.
 
@@ -420,6 +421,7 @@ Rules:
 - Use Unicode emoji for best compatibility.
 - Custom Discord emoji may work only if the bot can resolve/use that emoji identifier.
 - If `messageId` is provided and the target is outside the inferred channel, include `channelId`.
+- For thread messages, use the thread's `channelId` when explicitly targeting by `messageId`; the parent channel ID is not enough to fetch a message inside a thread.
 - If normal text is included before the block, the bridge will send that text and also add the reaction.
 
 ### Use `thread` to create a Discord thread
