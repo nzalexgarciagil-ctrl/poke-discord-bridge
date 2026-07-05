@@ -154,7 +154,7 @@ The bridge does not currently expose Discord profile descriptions, linked accoun
 Use this Poke recipe to give Poke the bridge instructions:
 
 ```text
-https://poke.com/r/NrX10fCvNh0
+https://poke.com/r/qOjjx5BBXH4
 ```
 
 The bridge no longer appends UI instructions to every Discord message. Poke should learn the protocol from the recipe above.
