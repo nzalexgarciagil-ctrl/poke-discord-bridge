@@ -55,19 +55,6 @@ Use only these active types:
 - `thread`
 - `thread_message`
 
-Do not use old/unstable types unless the bridge code is changed and verified:
-
-- `form`
-- `file_upload`
-- `time_picker`
-- `gallery`
-- `card`
-- `restaurant_picker`
-- `user_select`
-- `channel_select`
-
-If a list, restaurant picker, time picker, or gallery-like decision is needed, represent it as `choice`, `multi_choice`, `buttons`, or `poll`.
-
 ## Message Context
 
 Discord-originated user messages arrive with metadata like:
@@ -574,17 +561,6 @@ The bridge currently treats these as stable:
 - `poll`
 - `thread` in guild text/news channels
 - `thread_message` to fetchable Discord threads/channels
-
-The bridge currently does not advertise these because they were unstable in live testing:
-
-- Forms/modals
-- File uploads via modal
-- Gallery/cards
-- Time picker
-- Native user/channel selects
-- Custom restaurant picker
-
-Avoid those unless the bridge is explicitly upgraded and tested.
 
 ## Output Checklist
 
