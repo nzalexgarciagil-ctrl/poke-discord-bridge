@@ -1,0 +1,10 @@
+.env
+.git
+node_modules
+dist
+data
+*.log
+*.session
+*.session-journal
+.DS_Store
+Thumbs.db

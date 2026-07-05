@@ -4,7 +4,7 @@ import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
 import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
-import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type InteractiveUi, type PollUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
+import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type InteractiveUi, type PollResultsUi, type PollUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
 import { BridgeStore } from "./store.js";
 import { TelegramBridgeClient } from "./telegram-client.js";
 
@@ -218,6 +218,8 @@ export class PokeBridge {
     if (parsed.ui) {
       if (parsed.ui.type === "poll") {
         sent = await this.sendPoll(channel, parsed.ui, parsed.displayText, replyMessage);
+      } else if (parsed.ui.type === "poll_results") {
+        sent = await this.sendPollResults(channel, parsed.ui, message, parsed.displayText);
       } else if (parsed.ui.type === "thread") {
         sent = await this.createDiscordThread(channel, parsed.ui, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "thread_message") {
@@ -335,17 +337,48 @@ export class PokeBridge {
     return replyMessage ? await replyMessage.reply(options) : await channel.send(options);
   }
 
+  private async sendPollResults(channel: BridgeDiscordChannel, ui: PollResultsUi, telegramMessage: Api.Message, displayText: string): Promise<Message> {
+    const pollMessage = await this.resolvePollMessage(channel, ui, telegramMessage);
+    const freshPollMessage = await pollMessage?.fetch().catch(() => pollMessage);
+    if (!freshPollMessage?.poll) return await channel.send(displayText || "Could not find a Discord poll for results.");
+
+    const answers = [...freshPollMessage.poll.answers.values()].map((answer) => {
+      const a = answer as { text?: string | null; voteCount?: number; id?: number };
+      return { label: a.text || `Answer ${a.id ?? "?"}`, votes: a.voteCount ?? 0 };
+    }).sort((a, b) => b.votes - a.votes);
+
+    const total = answers.reduce((sum, answer) => sum + answer.votes, 0);
+    const lines = answers.map((answer, index) => `${index + 1}. ${answer.label}: ${answer.votes} vote${answer.votes === 1 ? "" : "s"}`);
+    return await channel.send(`${displayText ? `${displayText}\n\n` : ""}Poll results for ${freshPollMessage.url}\nTotal votes: ${total}\n${lines.join("\n")}`);
+  }
+
+  private async resolvePollMessage(channel: BridgeDiscordChannel, ui: PollResultsUi, telegramMessage: Api.Message): Promise<Message | undefined> {
+    if (ui.messageId) {
+      const targetChannel = ui.channelId ? await this.fetchDiscordChannelById(ui.channelId).catch(() => undefined) : channel;
+      return await targetChannel?.messages.fetch(ui.messageId).catch(() => undefined);
+    }
+
+    const replyTo = telegramMessage.replyTo;
+    const replyToMsgId = replyTo instanceof Api.MessageReplyHeader ? replyTo.replyToMsgId : undefined;
+    if (!replyToMsgId) return undefined;
+    const mapped = this.store.byTelegramMessageId(replyToMsgId);
+    if (!mapped) return undefined;
+    const targetChannel = mapped.discordChannelId ? await this.fetchDiscordChannelById(mapped.discordChannelId).catch(() => undefined) : channel;
+    return await targetChannel?.messages.fetch(mapped.discordMessageId).catch(() => undefined);
+  }
+
   private async createDiscordThread(channel: BridgeDiscordChannel, ui: ThreadUi, displayText: string, replyMessage?: Message): Promise<Message> {
     const name = ui.title.slice(0, 100);
     const starter = displayText || ui.message || `Thread created: ${name}`;
+    const shouldStartFromReply = ui.createFromReply ?? true;
 
-    if (replyMessage?.inGuild()) {
+    if (shouldStartFromReply && replyMessage?.inGuild()) {
       const thread = replyMessage.thread ?? await replyMessage.startThread({
         name,
         autoArchiveDuration: ui.autoArchiveDuration,
       });
       const sent = await thread.send(ui.message || starter);
-      await this.telegram.sendText(`Discord thread created: ${thread.name} (${thread.id})`, undefined);
+      if (ui.sendAck !== false) await this.telegram.sendText(threadAck(thread.name, thread.id, thread.parentId), undefined);
       return sent;
     }
 
@@ -357,7 +390,7 @@ export class PokeBridge {
         autoArchiveDuration: ui.autoArchiveDuration,
       });
       const sent = await thread.send(ui.message || starter);
-      await this.telegram.sendText(`Discord thread created: ${thread.name} (${thread.id})`, undefined);
+      if (ui.sendAck !== false) await this.telegram.sendText(threadAck(thread.name, thread.id, thread.parentId), undefined);
       return sent;
     }
 
@@ -459,6 +492,10 @@ export class PokeBridge {
     }
     return channel as BridgeDiscordChannel;
   }
+}
+
+function threadAck(name: string, threadId: string, parentChannelId?: string | null): string {
+  return `[Discord thread created]\nname: ${name}\nthreadId: ${threadId}${parentChannelId ? `\nparentChannelId: ${parentChannelId}` : ""}`;
 }
 
 function clamp(value: number, min: number, max: number): number {

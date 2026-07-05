@@ -12,10 +12,10 @@ import {
 import { randomBytes } from "node:crypto";
 
 const UI_BLOCK_RE = /<<<\s*POKE_DISCORD_UI\s*([\s\S]*?)\s*>>>/i;
-const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "thread", "thread_message"]);
-const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, thread, or thread_message.";
+const ENABLED_UI_TYPES = new Set(["choice", "multi_choice", "buttons", "confirm", "poll", "poll_results", "thread", "thread_message"]);
+const UNSUPPORTED_UI_MESSAGE = "Poke sent an unsupported Discord UI. Ask it to use choice, multi_choice, buttons, confirm, poll, poll_results, thread, or thread_message.";
 
-export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | ThreadUi | ThreadMessageUi;
+export type RichUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi | PollUi | PollResultsUi | ThreadUi | ThreadMessageUi;
 export type InteractiveUi = ChoiceUi | MultiChoiceUi | ButtonsUi | ConfirmUi;
 
 export interface ChoiceUi {
@@ -57,11 +57,19 @@ export interface PollUi {
   allowMultiselect?: boolean;
 }
 
+export interface PollResultsUi {
+  type: "poll_results";
+  messageId?: string;
+  channelId?: string;
+}
+
 export interface ThreadUi {
   type: "thread";
   title: string;
   message?: string;
   autoArchiveDuration?: number;
+  createFromReply?: boolean;
+  sendAck?: boolean;
 }
 
 export interface ThreadMessageUi {
@@ -251,11 +259,18 @@ function normalizeRichUi(value: Record<string, unknown>): RichUi {
     durationHours: numberField(value.durationHours) ?? numberField(value.duration),
     allowMultiselect: booleanField(value.allowMultiselect) ?? booleanField(value.multiSelect),
   };
+  if (type === "poll_results") return {
+    type,
+    messageId: optionalString(value.messageId) ?? optionalString(value.pollMessageId),
+    channelId: optionalString(value.channelId),
+  };
   if (type === "thread") return {
     type,
     title: stringField(value.title, stringField(value.name, "Poke thread")),
     message: optionalString(value.message) ?? optionalString(value.body) ?? optionalString(value.text),
     autoArchiveDuration: numberField(value.autoArchiveDuration),
+    createFromReply: booleanField(value.createFromReply) ?? booleanField(value.replyToCurrentMessage),
+    sendAck: booleanField(value.sendAck),
   };
   if (type === "thread_message") return {
     type,

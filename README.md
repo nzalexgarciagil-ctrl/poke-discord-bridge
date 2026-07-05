@@ -19,6 +19,7 @@ A TypeScript Discord bot that lets a Discord channel or DM talk to the Poke Tele
   - `buttons`
   - `confirm`
 - Native Discord polls via Poke JSON blocks.
+- Poll result summaries from existing Discord poll messages.
 - Discord thread creation and thread message routing for guild text/news channels.
 - Discord messages inside threads under the configured parent channel forward back to Telegram.
 
@@ -79,6 +80,14 @@ pnpm build
 pnpm start
 ```
 
+Docker:
+
+```bash
+docker compose up -d --build
+```
+
+The compose file mounts `./data` into the container so SQLite state and Telegram session files survive restarts.
+
 ## Discord Requirements
 
 Enable these privileged/intents in the Discord developer portal as needed:
@@ -103,7 +112,7 @@ Threads do not work in DMs. Set `DISCORD_CHANNEL_ID` to a guild text/news channe
 Use this Poke recipe to give Poke the bridge instructions:
 
 ```text
-https://poke.com/r/t7xPSD3-1VA
+https://poke.com/r/xNSP8-Oe1iY
 ```
 
 The bridge no longer appends UI instructions to every Discord message. Poke should learn the protocol from the recipe above.
@@ -127,10 +136,27 @@ Active supported types:
 - `buttons`
 - `confirm`
 - `poll`
+- `poll_results`
 - `thread`
 - `thread_message`
 
 See `skills/poke-discord-bridge/SKILL.md` for full schema guidance and examples.
+
+Poll results can be requested by replying in Telegram to the bridged poll message with:
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"poll_results"}
+>>>
+```
+
+or by supplying the Discord poll message ID:
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"poll_results","messageId":"123456789012345678","channelId":"123456789012345678"}
+>>>
+```
 
 ## Data Files
 

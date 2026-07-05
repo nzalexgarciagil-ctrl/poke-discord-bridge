@@ -6,7 +6,8 @@ const samples: RichUi[] = [
   { type: "buttons", title: "Actions", buttons: [{ label: "Go", value: "go" }] },
   { type: "confirm", title: "Confirm?" },
   { type: "poll", title: "Poll?", options: [{ label: "A" }, { label: "B" }], durationHours: 24 },
-  { type: "thread", title: "Thread", message: "Starter" },
+  { type: "poll_results", messageId: "123" },
+  { type: "thread", title: "Thread", message: "Starter", createFromReply: false, sendAck: true },
   { type: "thread_message", threadId: "123", message: "Hello" },
 ];
 

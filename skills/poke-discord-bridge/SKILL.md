@@ -1,6 +1,6 @@
 ---
 name: poke-discord-bridge
-description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, thread creation, or thread messages.
+description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, thread creation, or thread messages.
 ---
 
 # Poke Discord Bridge
@@ -52,6 +52,7 @@ Use only these active types:
 - `buttons`
 - `confirm`
 - `poll`
+- `poll_results`
 - `thread`
 - `thread_message`
 
@@ -324,6 +325,51 @@ Behavior:
 - Treat vote messages as signals, not as final unless the user says the poll is done.
 - Apps/bots cannot vote in Discord polls.
 
+### Use `poll_results` to summarize a Discord poll
+
+Use when Poke needs the current results for a poll it previously created or that exists in Discord.
+
+Best for:
+
+- Checking which option is winning.
+- Closing a group decision.
+- Summarizing votes before recommending the next step.
+
+Preferred schema when replying to the bridged Telegram message for the poll:
+
+```json
+{
+  "type": "poll_results"
+}
+```
+
+Schema with explicit Discord message ID:
+
+```json
+{
+  "type": "poll_results",
+  "messageId": "123456789012345678",
+  "channelId": "123456789012345678"
+}
+```
+
+Example response:
+
+```text
+I’ll check the poll results.
+
+<<<POKE_DISCORD_UI
+{"type":"poll_results"}
+>>>
+```
+
+Rules:
+
+- Prefer replying to the Telegram message that corresponds to the Discord poll. That lets the bridge find the poll through message mapping.
+- Use `messageId` when Poke has stored the Discord poll message ID.
+- Include `channelId` if the poll lives outside the current inferred channel.
+- Treat results as current-at-fetch-time, not final, unless the poll has ended.
+
 Limitations:
 
 - Native poll behavior is controlled by Discord.
@@ -349,7 +395,9 @@ Schema:
   "type": "thread",
   "title": "Lunch ideas",
   "message": "Let’s decide here. Drop constraints or vote above.",
-  "autoArchiveDuration": 1440
+  "autoArchiveDuration": 1440,
+  "createFromReply": true,
+  "sendAck": true
 }
 ```
 
@@ -368,6 +416,8 @@ Field rules:
 - `title`: Discord thread name. Max 100 characters; keep it descriptive.
 - `message`: optional starter message posted inside the thread.
 - `autoArchiveDuration`: optional Discord auto-archive duration in minutes. Common values: `60`, `1440`, `4320`, `10080`, depending on server settings.
+- `createFromReply`: optional boolean. Defaults to `true`. If the Poke message is replying to a Discord message, the bridge starts the thread from that message when possible. Set `false` to create a standalone thread under the configured channel.
+- `sendAck`: optional boolean. Defaults to `true`. When enabled, the bridge sends Poke a structured Telegram acknowledgement with the thread ID.
 
 Behavior:
 
@@ -376,7 +426,10 @@ Behavior:
 - After creation, the bridge sends Poke a Telegram message like:
 
 ```text
-Discord thread created: Lunch ideas (123456789012345678)
+[Discord thread created]
+name: Lunch ideas
+threadId: 123456789012345678
+parentChannelId: 987654321098765432
 ```
 
 Save/use the thread ID when sending later `thread_message` blocks.
@@ -449,6 +502,7 @@ Use this decision table:
 | User needs quick action buttons | `buttons` |
 | User needs yes/no approval | `confirm` |
 | Multiple Discord users should vote | `poll` |
+| Poke needs current Discord poll results | `poll_results` |
 | Topic needs a focused Discord sub-conversation | `thread` |
 | Poke should send a message into an existing thread | `thread_message` |
 | User just needs an answer | Plain text, no block |
@@ -511,7 +565,7 @@ I can go with that plan. Confirm before I treat it as decided.
 This is starting to branch. I’ll make a thread for it.
 
 <<<POKE_DISCORD_UI
-{"type":"thread","title":"Restaurant shortlist","message":"Use this thread to narrow restaurant options.","autoArchiveDuration":1440}
+{"type":"thread","title":"Restaurant shortlist","message":"Use this thread to narrow restaurant options.","autoArchiveDuration":1440,"createFromReply":true,"sendAck":true}
 >>>
 ```
 
@@ -559,6 +613,7 @@ The bridge currently treats these as stable:
 - `buttons`
 - `confirm`
 - `poll`
+- `poll_results`
 - `thread` in guild text/news channels
 - `thread_message` to fetchable Discord threads/channels
 
@@ -573,4 +628,5 @@ Before sending a rich/action response, verify:
 - The UI is actually useful; otherwise plain text is enough.
 - For choices/buttons, labels are short and values are present.
 - For polls, there are 2-10 options.
+- For poll results, reply to the poll’s bridged Telegram message or include `messageId`.
 - For threads, the target is likely a guild channel or the response has a graceful fallback.
