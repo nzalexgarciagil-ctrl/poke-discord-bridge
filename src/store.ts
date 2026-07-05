@@ -30,52 +30,54 @@ export interface DiscordUserContextRecord {
   lastStatusSignature?: string | null;
 }
 
+export interface DiscordUserMetadataRecord {
+  userId: string;
+  guildId: string;
+  username: string;
+  globalName?: string | null;
+  displayName: string;
+  serverDisplayName?: string | null;
+  serverNickname?: string | null;
+  avatarUrl: string;
+  bannerUrl?: string | null;
+  accentColor?: string | null;
+  accountCreatedAt: string;
+  joinedServerAt?: string | null;
+  roles: string[];
+  bot: boolean;
+  system: boolean;
+  statusSignature?: string | null;
+  updatedAt?: string;
+}
+
 export class BridgeStore {
   private db: DatabaseSync;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS message_map (
-        discord_message_id TEXT PRIMARY KEY,
-        discord_channel_id TEXT,
-        telegram_message_id INTEGER NOT NULL UNIQUE,
-        direction TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE INDEX IF NOT EXISTS idx_message_map_telegram_message_id
-        ON message_map(telegram_message_id);
+    this.migrate();
+  }
 
-      CREATE TABLE IF NOT EXISTS rich_interaction (
-        id TEXT PRIMARY KEY,
-        telegram_message_id INTEGER NOT NULL,
-        discord_message_id TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        consumed_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_rich_interaction_discord_message_id
-        ON rich_interaction(discord_message_id);
-
-      CREATE TABLE IF NOT EXISTS discord_user_context (
-        user_id TEXT NOT NULL,
-        guild_id TEXT NOT NULL,
-        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_status_signature TEXT,
-        PRIMARY KEY (user_id, guild_id)
-      );
-    `);
-    if (!this.hasColumn("message_map", "discord_channel_id")) {
-      this.db.exec("ALTER TABLE message_map ADD COLUMN discord_channel_id TEXT");
+  private migrate(): void {
+    this.db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const migration of MIGRATIONS) {
+        if (this.migrationApplied(migration.version)) continue;
+        migration.up(this.db);
+        this.db.prepare("INSERT INTO schema_migrations (version) VALUES (?)").run(migration.version);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
   }
 
-  private hasColumn(table: string, column: string): boolean {
-    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-    return rows.some((row) => row.name === column);
+  private migrationApplied(version: number): boolean {
+    const row = this.db.prepare("SELECT version FROM schema_migrations WHERE version = ?").get(version) as { version: number } | undefined;
+    return Boolean(row);
   }
 
   save(record: Omit<MessageMapRecord, "createdAt">): void {
@@ -119,9 +121,7 @@ export class BridgeStore {
   }
 
   consumeRichInteraction(id: string): void {
-    this.db.prepare(`
-      UPDATE rich_interaction SET consumed_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).run(id);
+    this.db.prepare("UPDATE rich_interaction SET consumed_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   }
 
   discordUserContext(userId: string, guildId: string): DiscordUserContextRecord | undefined {
@@ -143,9 +143,155 @@ export class BridgeStore {
     `).run(record.userId, record.guildId, record.statusSignature ?? null);
   }
 
+  saveDiscordUserMetadata(record: DiscordUserMetadataRecord): void {
+    this.db.prepare(`
+      INSERT INTO user_metadata
+        (user_id, guild_id, username, global_name, display_name, server_display_name, server_nickname,
+         avatar_url, banner_url, accent_color, account_created_at, joined_server_at, roles_json,
+         bot, system, status_signature, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, guild_id) DO UPDATE SET
+        username = excluded.username,
+        global_name = excluded.global_name,
+        display_name = excluded.display_name,
+        server_display_name = excluded.server_display_name,
+        server_nickname = excluded.server_nickname,
+        avatar_url = excluded.avatar_url,
+        banner_url = excluded.banner_url,
+        accent_color = excluded.accent_color,
+        account_created_at = excluded.account_created_at,
+        joined_server_at = excluded.joined_server_at,
+        roles_json = excluded.roles_json,
+        bot = excluded.bot,
+        system = excluded.system,
+        status_signature = excluded.status_signature,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(
+      record.userId,
+      record.guildId,
+      record.username,
+      record.globalName ?? null,
+      record.displayName,
+      record.serverDisplayName ?? null,
+      record.serverNickname ?? null,
+      record.avatarUrl,
+      record.bannerUrl ?? null,
+      record.accentColor ?? null,
+      record.accountCreatedAt,
+      record.joinedServerAt ?? null,
+      JSON.stringify(record.roles),
+      record.bot ? 1 : 0,
+      record.system ? 1 : 0,
+      record.statusSignature ?? null,
+    );
+  }
+
+  discordUserMetadata(userId: string, guildId: string): DiscordUserMetadataRecord | undefined {
+    const row = this.db.prepare(`
+      SELECT user_id, guild_id, username, global_name, display_name, server_display_name, server_nickname,
+        avatar_url, banner_url, accent_color, account_created_at, joined_server_at, roles_json,
+        bot, system, status_signature, updated_at
+      FROM user_metadata WHERE user_id = ? AND guild_id = ?
+    `).get(userId, guildId) as DiscordUserMetadataRow | undefined;
+    return row ? mapDiscordUserMetadataRow(row) : undefined;
+  }
+
   close(): void {
     this.db.close();
   }
+}
+
+interface Migration {
+  version: number;
+  up(db: DatabaseSync): void;
+}
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS message_map (
+          discord_message_id TEXT PRIMARY KEY,
+          discord_channel_id TEXT,
+          telegram_message_id INTEGER NOT NULL UNIQUE,
+          direction TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_message_map_telegram_message_id
+          ON message_map(telegram_message_id);
+
+        CREATE TABLE IF NOT EXISTS rich_interaction (
+          id TEXT PRIMARY KEY,
+          telegram_message_id INTEGER NOT NULL,
+          discord_message_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          consumed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_rich_interaction_discord_message_id
+          ON rich_interaction(discord_message_id);
+      `);
+    },
+  },
+  {
+    version: 2,
+    up(db) {
+      if (!messageMapHasDiscordChannelId(db)) {
+        db.exec("ALTER TABLE message_map ADD COLUMN discord_channel_id TEXT");
+      }
+    },
+  },
+  {
+    version: 3,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS discord_user_context (
+          user_id TEXT NOT NULL,
+          guild_id TEXT NOT NULL,
+          first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_status_signature TEXT,
+          PRIMARY KEY (user_id, guild_id)
+        );
+      `);
+    },
+  },
+  {
+    version: 4,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS user_metadata (
+          user_id TEXT NOT NULL,
+          guild_id TEXT NOT NULL,
+          username TEXT NOT NULL,
+          global_name TEXT,
+          display_name TEXT NOT NULL,
+          server_display_name TEXT,
+          server_nickname TEXT,
+          avatar_url TEXT NOT NULL,
+          banner_url TEXT,
+          accent_color TEXT,
+          account_created_at TEXT NOT NULL,
+          joined_server_at TEXT,
+          roles_json TEXT NOT NULL DEFAULT '[]',
+          bot INTEGER NOT NULL DEFAULT 0,
+          system INTEGER NOT NULL DEFAULT 0,
+          status_signature TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, guild_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_metadata_guild_id
+          ON user_metadata(guild_id);
+      `);
+    },
+  },
+];
+
+function messageMapHasDiscordChannelId(db: DatabaseSync): boolean {
+  const rows = db.prepare("PRAGMA table_info(message_map)").all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === "discord_channel_id");
 }
 
 interface Row {
@@ -172,6 +318,26 @@ interface DiscordUserContextRow {
   first_seen_at: string;
   last_seen_at: string;
   last_status_signature?: string | null;
+}
+
+interface DiscordUserMetadataRow {
+  user_id: string;
+  guild_id: string;
+  username: string;
+  global_name?: string | null;
+  display_name: string;
+  server_display_name?: string | null;
+  server_nickname?: string | null;
+  avatar_url: string;
+  banner_url?: string | null;
+  accent_color?: string | null;
+  account_created_at: string;
+  joined_server_at?: string | null;
+  roles_json: string;
+  bot: number;
+  system: number;
+  status_signature?: string | null;
+  updated_at: string;
 }
 
 function mapRow(row: Row): MessageMapRecord {
@@ -204,4 +370,35 @@ function mapDiscordUserContextRow(row: DiscordUserContextRow): DiscordUserContex
     lastSeenAt: row.last_seen_at,
     lastStatusSignature: row.last_status_signature,
   };
+}
+
+function mapDiscordUserMetadataRow(row: DiscordUserMetadataRow): DiscordUserMetadataRecord {
+  return {
+    userId: row.user_id,
+    guildId: row.guild_id,
+    username: row.username,
+    globalName: row.global_name,
+    displayName: row.display_name,
+    serverDisplayName: row.server_display_name,
+    serverNickname: row.server_nickname,
+    avatarUrl: row.avatar_url,
+    bannerUrl: row.banner_url,
+    accentColor: row.accent_color,
+    accountCreatedAt: row.account_created_at,
+    joinedServerAt: row.joined_server_at,
+    roles: parseRoles(row.roles_json),
+    bot: Boolean(row.bot),
+    system: Boolean(row.system),
+    statusSignature: row.status_signature,
+    updatedAt: row.updated_at,
+  };
+}
+
+function parseRoles(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((role): role is string => typeof role === "string") : [];
+  } catch {
+    return [];
+  }
 }

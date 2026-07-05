@@ -132,11 +132,19 @@ roles=Founder, Engineering
 [Discord: guild="..." channel="..." channelId=... | author="..." username=... userId=... | messageId=...] ...
 ```
 
+The bridge also caches the same profile fields in `user_metadata` so repeated messages do not need profile fetches.
+
 Presence/status is optional because Discord may require the `GuildPresences` gateway intent and corresponding developer-portal setting:
 
 ```env
 BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE=true
 BRIDGE_USER_CONTEXT_STATUS_UPDATES=true
+```
+
+Member-join metadata caching is also optional because it requires the `GuildMembers` gateway intent:
+
+```env
+BRIDGE_USER_CONTEXT_CACHE_MEMBER_JOINS=true
 ```
 
 The bridge does not currently expose Discord profile descriptions or linked accounts because those fields are not available on the `discord.js` `User` object used here.

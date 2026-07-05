@@ -24,6 +24,7 @@ const schema = z.object({
   BRIDGE_TMP_DIR: z.string().default("./data/tmp"),
   BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE: booleanFromEnv.default(false),
   BRIDGE_USER_CONTEXT_STATUS_UPDATES: booleanFromEnv.default(false),
+  BRIDGE_USER_CONTEXT_CACHE_MEMBER_JOINS: booleanFromEnv.default(false),
   LOG_LEVEL: z.string().default("info"),
 });
 

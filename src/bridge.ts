@@ -5,7 +5,7 @@ import type { AppConfig } from "./config.js";
 import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
 import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type EndPollUi, type InteractiveUi, type MessageLinkUi, type PollResultsUi, type PollUi, type ReactionUi, type ReplyUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
-import { BridgeStore } from "./store.js";
+import { BridgeStore, type DiscordUserMetadataRecord } from "./store.js";
 import { TelegramBridgeClient } from "./telegram-client.js";
 
 type BridgeDiscordChannel = SendableChannels & {
@@ -39,6 +39,9 @@ export class PokeBridge {
     ];
     if (config.BRIDGE_USER_CONTEXT_INCLUDE_PRESENCE || config.BRIDGE_USER_CONTEXT_STATUS_UPDATES) {
       intents.push(GatewayIntentBits.GuildPresences);
+    }
+    if (config.BRIDGE_USER_CONTEXT_CACHE_MEMBER_JOINS) {
+      intents.push(GatewayIntentBits.GuildMembers);
     }
 
     this.discord = new Client({
@@ -79,6 +82,15 @@ export class PokeBridge {
         await this.handleDiscordMessage(message);
       } catch (error) {
         logger.error({ err: error, messageId: message.id }, "failed to bridge discord message");
+      }
+    });
+
+    this.discord.on(Events.GuildMemberAdd, (member) => {
+      try {
+        if (!this.config.BRIDGE_USER_CONTEXT_CACHE_MEMBER_JOINS) return;
+        this.store.saveDiscordUserMetadata(discordUserMetadataFromMember(member));
+      } catch (error) {
+        logger.error({ err: error, userId: member.id, guildId: member.guild.id }, "failed to cache discord member metadata");
       }
     });
 
@@ -490,6 +502,7 @@ export class PokeBridge {
       : undefined;
     const statusSignature = presence ? discordPresenceSignature(presence) : undefined;
     const previous = this.store.discordUserContext(message.author.id, message.guildId);
+    this.store.saveDiscordUserMetadata(discordUserMetadataFromMessage(message, member, statusSignature));
     this.store.saveDiscordUserContext({ userId: message.author.id, guildId: message.guildId, statusSignature });
 
     if (!previous) return `${formatNewDiscordUserContext(message, member, presence)}\n\n`;
@@ -555,6 +568,45 @@ export class PokeBridge {
   }
 }
 
+function discordUserMetadataFromMessage(message: Message, member?: GuildMember, statusSignature?: string): DiscordUserMetadataRecord {
+  return discordUserMetadataFromUserLike({
+    user: message.author,
+    guildId: message.guildId ?? "dm",
+    member,
+    statusSignature,
+  });
+}
+
+function discordUserMetadataFromMember(member: GuildMember): DiscordUserMetadataRecord {
+  return discordUserMetadataFromUserLike({
+    user: member.user,
+    guildId: member.guild.id,
+    member,
+    statusSignature: member.presence ? discordPresenceSignature(member.presence) : undefined,
+  });
+}
+
+function discordUserMetadataFromUserLike(input: { user: Message["author"]; guildId: string; member?: GuildMember; statusSignature?: string }): DiscordUserMetadataRecord {
+  return {
+    userId: input.user.id,
+    guildId: input.guildId,
+    username: input.user.username,
+    globalName: input.user.globalName,
+    displayName: input.user.displayName,
+    serverDisplayName: input.member?.displayName,
+    serverNickname: input.member?.nickname,
+    avatarUrl: input.user.displayAvatarURL(),
+    bannerUrl: input.user.bannerURL(),
+    accentColor: input.user.hexAccentColor,
+    accountCreatedAt: input.user.createdAt.toISOString(),
+    joinedServerAt: input.member?.joinedAt?.toISOString(),
+    roles: discordMemberRoleNames(input.member),
+    bot: input.user.bot,
+    system: input.user.system,
+    statusSignature: input.statusSignature,
+  };
+}
+
 function formatNewDiscordUserContext(message: Message, member?: GuildMember, presence?: Presence): string {
   const lines = [
     "[New Discord user context]",
@@ -573,8 +625,8 @@ function formatNewDiscordUserContext(message: Message, member?: GuildMember, pre
   if (accent) lines.push(`accentColor=${accent}`);
   lines.push(`accountCreatedAt=${message.author.createdAt.toISOString()}`);
   if (member?.joinedAt) lines.push(`joinedServerAt=${member.joinedAt.toISOString()}`);
-  const roles = discordMemberRoles(member);
-  if (roles) lines.push(`roles=${roles}`);
+  const roles = discordMemberRoleNames(member);
+  if (roles.length) lines.push(`roles=${roles.join(", ")}`);
   if (presence) lines.push(...formatDiscordPresenceLines(presence));
   return lines.join("\n");
 }
@@ -588,14 +640,13 @@ function formatDiscordStatusUpdate(message: Message, previous: string, current: 
   ].join("\n");
 }
 
-function discordMemberRoles(member?: GuildMember): string | undefined {
-  if (!member) return undefined;
-  const roles = [...member.roles.cache.values()]
+function discordMemberRoleNames(member?: GuildMember): string[] {
+  if (!member) return [];
+  return [...member.roles.cache.values()]
     .filter((role) => role.id !== member.guild.id)
     .sort((a, b) => b.position - a.position)
     .slice(0, 15)
     .map((role) => role.name);
-  return roles.length ? roles.join(", ") : undefined;
 }
 
 function formatDiscordPresenceLines(presence: Presence): string[] {

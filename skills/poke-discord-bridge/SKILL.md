@@ -92,7 +92,7 @@ status=online
 activities=Visual Studio Code
 ```
 
-Use it to understand who is speaking. Do not quote the block back to the user. Discord profile descriptions and linked accounts are not currently included because the bridge does not receive those fields from Discord.
+Use it to understand who is speaking. Do not quote the block back to the user. The bridge also caches these fields in a local `user_metadata` SQLite table. Discord profile descriptions and linked accounts are not currently included because the bridge does not receive those fields from Discord.
 
 If presence/status updates are enabled, Poke may also receive:
 
