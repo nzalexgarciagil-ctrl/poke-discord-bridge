@@ -1,4 +1,4 @@
-import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type PartialMessage, type Presence, type SendableChannels } from "discord.js";
+import { AttachmentBuilder, ChannelType, Client, Events, GatewayIntentBits, Message, Partials, type GuildMember, type Interaction, type MessageCreateOptions, type PartialMessage, type Presence, type SendableChannels, type User } from "discord.js";
 import { mkdirSync } from "node:fs";
 import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
@@ -21,6 +21,7 @@ export class PokeBridge {
   private targetTelegramUserId?: string;
   private lastDiscordTypingToTelegramAt = 0;
   private lastTelegramTypingToDiscordAt = 0;
+  private lastPresenceUpdateToTelegramAt = new Map<string, number>();
 
   constructor(private config: AppConfig) {
     this.store = new BridgeStore(config.BRIDGE_DB_PATH);
@@ -144,6 +145,14 @@ export class PokeBridge {
         await this.handleDiscordInteraction(interaction);
       } catch (error) {
         logger.error({ err: error }, "failed to handle discord interaction");
+      }
+    });
+
+    this.discord.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
+      try {
+        await this.handleDiscordPresenceUpdate(oldPresence, newPresence);
+      } catch (error) {
+        logger.error({ err: error, userId: newPresence.userId, guildId: newPresence.guild?.id }, "failed to bridge discord presence update");
       }
     });
 
@@ -509,6 +518,27 @@ export class PokeBridge {
     return true;
   }
 
+  private async handleDiscordPresenceUpdate(oldPresence: Presence | null, newPresence: Presence): Promise<void> {
+    if (!this.config.BRIDGE_USER_CONTEXT_STATUS_UPDATES) return;
+    if (!newPresence.guild?.id) return;
+    if (this.config.DISCORD_GUILD_ID && newPresence.guild.id !== this.config.DISCORD_GUILD_ID) return;
+
+    const seen = this.store.discordUserContext(newPresence.userId, newPresence.guild.id);
+    if (!seen) return;
+
+    const current = discordPresenceSignature(newPresence);
+    const previous = seen.lastStatusSignature ?? (oldPresence ? discordPresenceSignature(oldPresence) : undefined);
+    this.store.saveDiscordUserContext({ userId: newPresence.userId, guildId: newPresence.guild.id, statusSignature: current });
+
+    const user = newPresence.user ?? await this.discord.users.fetch(newPresence.userId).catch(() => undefined);
+    if (user) this.store.saveDiscordUserMetadata(discordUserMetadataFromPresence(newPresence, user));
+
+    if (!previous || previous === current) return;
+    if (!this.shouldForwardPresenceUpdate(newPresence.guild.id, newPresence.userId)) return;
+
+    await this.telegram.sendText(formatDiscordPresenceUpdate(newPresence, user, previous, current), undefined);
+  }
+
   private async forwardPollVote(pollAnswer: unknown, userId: string, action: "voted" | "removed vote"): Promise<void> {
     const answer = pollAnswer as { id?: number; text?: string | null; poll?: { messageId?: string; message?: Message; question?: { text?: string | null } } };
     const messageId = answer.poll?.messageId ?? answer.poll?.message?.id;
@@ -577,6 +607,17 @@ export class PokeBridge {
     return true;
   }
 
+  private shouldForwardPresenceUpdate(guildId: string, userId: string): boolean {
+    const minMs = this.config.BRIDGE_USER_CONTEXT_STATUS_UPDATE_MIN_SECONDS * 1000;
+    if (minMs === 0) return true;
+    const key = `${guildId}:${userId}`;
+    const now = Date.now();
+    const previous = this.lastPresenceUpdateToTelegramAt.get(key) ?? 0;
+    if (now - previous < minMs) return false;
+    this.lastPresenceUpdateToTelegramAt.set(key, now);
+    return true;
+  }
+
   private async getDiscordChannel(): Promise<BridgeDiscordChannel> {
     if (this.discordChannel) return this.discordChannel;
     const channel = await this.fetchDiscordChannel();
@@ -625,7 +666,17 @@ function discordUserMetadataFromMember(member: GuildMember): DiscordUserMetadata
   });
 }
 
-function discordUserMetadataFromUserLike(input: { user: Message["author"]; guildId: string; member?: GuildMember; statusSignature?: string }): DiscordUserMetadataRecord {
+function discordUserMetadataFromPresence(presence: Presence, user: User): DiscordUserMetadataRecord {
+  const member = presence.member ?? undefined;
+  return discordUserMetadataFromUserLike({
+    user,
+    guildId: presence.guild?.id ?? "dm",
+    member,
+    statusSignature: discordPresenceSignature(presence),
+  });
+}
+
+function discordUserMetadataFromUserLike(input: { user: User; guildId: string; member?: GuildMember; statusSignature?: string }): DiscordUserMetadataRecord {
   return {
     userId: input.user.id,
     guildId: input.guildId,
@@ -677,6 +728,21 @@ function formatDiscordStatusUpdate(message: Message, previous: string, current: 
     `username=${message.author.username}`,
     `status=${previous} -> ${current}`,
   ].join("\n");
+}
+
+function formatDiscordPresenceUpdate(presence: Presence, user: User | undefined, previous: string, current: string): string {
+  const lines = [
+    "[Discord presence update]",
+    `userId=${presence.userId}`,
+  ];
+  if (user) {
+    lines.push(`username=${user.username}`);
+    lines.push(`displayName=${user.displayName}`);
+  }
+  lines.push(`status=${previous} -> ${current}`);
+  const activities = presence.activities.map((activity) => discordActivityLabel(activity)).filter(Boolean).slice(0, 5);
+  if (activities.length) lines.push(`activities=${activities.join("; ")}`);
+  return lines.join("\n");
 }
 
 function discordMemberRoleNames(member?: GuildMember): string[] {
