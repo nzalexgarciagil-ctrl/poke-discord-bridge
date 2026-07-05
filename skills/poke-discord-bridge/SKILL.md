@@ -1,6 +1,6 @@
 ---
 name: poke-discord-bridge
-description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, emoji reactions, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, reactions, thread creation, or thread messages.
+description: Use the Poke Discord bridge to send normal messages, interactive choices, buttons, confirmations, native Discord polls, poll result summaries, poll ending, emoji reactions, and Discord thread actions through Telegram. Trigger when replying as Poke to a Discord-bridged user and deciding whether to include a POKE_DISCORD_UI block for rich Discord UI, polls, poll results, poll ending, reactions, thread creation, or thread messages.
 ---
 
 # Poke Discord Bridge
@@ -53,6 +53,7 @@ Use only these active types:
 - `confirm`
 - `poll`
 - `poll_results`
+- `end_poll`
 - `reaction`
 - `thread`
 - `thread_message`
@@ -377,6 +378,53 @@ Limitations:
 - Native poll behavior is controlled by Discord.
 - Poll creation can fail if the Discord client/server context does not support polls or permissions are missing.
 
+### Use `end_poll` to close a Discord poll
+
+Use when enough votes are in and Poke should stop further voting.
+
+Best for:
+
+- Closing a decision once there is enough signal.
+- Ending a poll before acting on the winner.
+- Producing final poll results.
+
+Preferred schema when replying to the bridged Telegram message for the poll:
+
+```json
+{
+  "type": "end_poll",
+  "summarize": true
+}
+```
+
+Schema with explicit Discord message ID:
+
+```json
+{
+  "type": "end_poll",
+  "messageId": "123456789012345678",
+  "channelId": "123456789012345678",
+  "summarize": true
+}
+```
+
+Example response:
+
+```text
+I’ll close the poll and summarize the result.
+
+<<<POKE_DISCORD_UI
+{"type":"end_poll","summarize":true}
+>>>
+```
+
+Rules:
+
+- Prefer replying to the Telegram message that corresponds to the Discord poll.
+- Use `messageId` when Poke has stored the Discord poll message ID.
+- Include `channelId` if the poll lives outside the current inferred channel.
+- Set `summarize` to `true` when Poke wants final results posted after ending the poll.
+
 ### Use `reaction` to add an emoji reaction to a Discord message
 
 Use when Poke wants to acknowledge or react to a specific Discord message without sending a full text response.
@@ -552,6 +600,7 @@ Use this decision table:
 | User needs yes/no approval | `confirm` |
 | Multiple Discord users should vote | `poll` |
 | Poke needs current Discord poll results | `poll_results` |
+| Poke should close a Discord poll | `end_poll` |
 | Poke should react to a Discord message | `reaction` |
 | Topic needs a focused Discord sub-conversation | `thread` |
 | Poke should send a message into an existing thread | `thread_message` |
@@ -606,6 +655,16 @@ I can go with that plan. Confirm before I treat it as decided.
 
 <<<POKE_DISCORD_UI
 {"type":"confirm","title":"Confirm plan","body":"Proceed with this option?","confirmLabel":"Confirm","cancelLabel":"Cancel","confirmValue":"confirmed","cancelValue":"cancelled"}
+>>>
+```
+
+### End a poll
+
+```text
+I’ll close the poll and summarize the result.
+
+<<<POKE_DISCORD_UI
+{"type":"end_poll","summarize":true}
 >>>
 ```
 
@@ -672,6 +731,7 @@ The bridge currently treats these as stable:
 - `confirm`
 - `poll`
 - `poll_results`
+- `end_poll`
 - `reaction`
 - `thread` in guild text/news channels
 - `thread_message` to fetchable Discord threads/channels
@@ -688,5 +748,6 @@ Before sending a rich/action response, verify:
 - For choices/buttons, labels are short and values are present.
 - For polls, there are 2-10 options.
 - For poll results, reply to the poll’s bridged Telegram message or include `messageId`.
+- For ending polls, reply to the poll’s bridged Telegram message or include `messageId`.
 - For reactions, reply to the bridged Telegram message or include `messageId` and a valid `emoji`.
 - For threads, the target is likely a guild channel or the response has a graceful fallback.

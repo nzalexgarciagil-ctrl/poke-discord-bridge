@@ -4,7 +4,7 @@ import { Api } from "telegram";
 import type { AppConfig } from "./config.js";
 import { discordEmojiToUnicode, formatDiscordMessageForTelegram, formatTelegramMessageForDiscord, truncateTelegram } from "./format.js";
 import { logger } from "./logger.js";
-import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type InteractiveUi, type PollResultsUi, type PollUi, type ReactionUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
+import { getButtonValueByIndex, getOptionValue, getOptionValueByIndex, isInteractiveUi, newInteractionId, parseRichUi, renderRichUi, renderSelectedRichUi, type EndPollUi, type InteractiveUi, type PollResultsUi, type PollUi, type ReactionUi, type ThreadMessageUi, type ThreadUi } from "./rich-ui.js";
 import { BridgeStore } from "./store.js";
 import { TelegramBridgeClient } from "./telegram-client.js";
 
@@ -220,6 +220,8 @@ export class PokeBridge {
         sent = await this.sendPoll(channel, parsed.ui, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "poll_results") {
         sent = await this.sendPollResults(channel, parsed.ui, message, parsed.displayText);
+      } else if (parsed.ui.type === "end_poll") {
+        sent = await this.endPoll(channel, parsed.ui, message, parsed.displayText);
       } else if (parsed.ui.type === "reaction") {
         sent = await this.sendDiscordReaction(channel, parsed.ui, message, parsed.displayText, replyMessage);
       } else if (parsed.ui.type === "thread") {
@@ -340,22 +342,20 @@ export class PokeBridge {
   }
 
   private async sendPollResults(channel: BridgeDiscordChannel, ui: PollResultsUi, telegramMessage: Api.Message, displayText: string): Promise<Message> {
-    const pollMessage = await this.resolvePollMessage(channel, ui, telegramMessage);
+    const pollMessage = await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
     const freshPollMessage = await pollMessage?.fetch().catch(() => pollMessage);
     if (!freshPollMessage?.poll) return await channel.send(displayText || "Could not find a Discord poll for results.");
-
-    const answers = [...freshPollMessage.poll.answers.values()].map((answer) => {
-      const a = answer as { text?: string | null; voteCount?: number; id?: number };
-      return { label: a.text || `Answer ${a.id ?? "?"}`, votes: a.voteCount ?? 0 };
-    }).sort((a, b) => b.votes - a.votes);
-
-    const total = answers.reduce((sum, answer) => sum + answer.votes, 0);
-    const lines = answers.map((answer, index) => `${index + 1}. ${answer.label}: ${answer.votes} vote${answer.votes === 1 ? "" : "s"}`);
-    return await channel.send(`${displayText ? `${displayText}\n\n` : ""}Poll results for ${freshPollMessage.url}\nTotal votes: ${total}\n${lines.join("\n")}`);
+    return await channel.send(formatPollResults(freshPollMessage, displayText));
   }
 
-  private async resolvePollMessage(channel: BridgeDiscordChannel, ui: PollResultsUi, telegramMessage: Api.Message): Promise<Message | undefined> {
-    return await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+  private async endPoll(channel: BridgeDiscordChannel, ui: EndPollUi, telegramMessage: Api.Message, displayText: string): Promise<Message> {
+    const pollMessage = await this.resolveDiscordMessage(channel, telegramMessage, ui.messageId, ui.channelId);
+    const freshPollMessage = await pollMessage?.fetch().catch(() => pollMessage);
+    if (!freshPollMessage?.poll) return await channel.send(displayText || "Could not find a Discord poll to end.");
+
+    const endedMessage = await freshPollMessage.poll.end();
+    if (ui.summarize === false) return await channel.send(displayText || `Ended poll: ${endedMessage.url}`);
+    return await channel.send(formatPollResults(endedMessage, displayText || "Poll ended."));
   }
 
   private async sendDiscordReaction(channel: BridgeDiscordChannel, ui: ReactionUi, telegramMessage: Api.Message, displayText: string, replyMessage?: Message): Promise<Message> {
@@ -507,6 +507,18 @@ export class PokeBridge {
     }
     return channel as BridgeDiscordChannel;
   }
+}
+
+function formatPollResults(message: Message, prefix?: string): string {
+  if (!message.poll) return prefix || "Poll results unavailable.";
+  const answers = [...message.poll.answers.values()].map((answer) => {
+    const a = answer as { text?: string | null; voteCount?: number; id?: number };
+    return { label: a.text || `Answer ${a.id ?? "?"}`, votes: a.voteCount ?? 0 };
+  }).sort((a, b) => b.votes - a.votes);
+
+  const total = answers.reduce((sum, answer) => sum + answer.votes, 0);
+  const lines = answers.map((answer, index) => `${index + 1}. ${answer.label}: ${answer.votes} vote${answer.votes === 1 ? "" : "s"}`);
+  return `${prefix ? `${prefix}\n\n` : ""}Poll results for ${message.url}\nTotal votes: ${total}\n${lines.join("\n")}`;
 }
 
 function threadAck(name: string, threadId: string, parentChannelId?: string | null): string {

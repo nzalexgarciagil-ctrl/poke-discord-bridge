@@ -20,6 +20,7 @@ A TypeScript Discord bot that lets a Discord channel or DM talk to the Poke Tele
   - `confirm`
 - Native Discord polls via Poke JSON blocks.
 - Poll result summaries from existing Discord poll messages.
+- Ending Discord polls from Poke.
 - Poke-triggered Discord emoji reactions.
 - Discord thread creation and thread message routing for guild text/news channels.
 - Discord messages inside threads under the configured parent channel forward back to Telegram.
@@ -138,6 +139,7 @@ Active supported types:
 - `confirm`
 - `poll`
 - `poll_results`
+- `end_poll`
 - `reaction`
 - `thread`
 - `thread_message`
@@ -157,6 +159,14 @@ or by supplying the Discord poll message ID:
 ```text
 <<<POKE_DISCORD_UI
 {"type":"poll_results","messageId":"123456789012345678","channelId":"123456789012345678"}
+>>>
+```
+
+Poke can end a Discord poll by replying in Telegram to the bridged poll message:
+
+```text
+<<<POKE_DISCORD_UI
+{"type":"end_poll","summarize":true}
 >>>
 ```
 
